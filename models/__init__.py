@@ -1,0 +1,1 @@
+"""Validated scholarship record models."""

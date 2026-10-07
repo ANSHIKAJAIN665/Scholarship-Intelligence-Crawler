@@ -1,45 +1,40 @@
-# [Project name]
+# Scholarship Intelligence
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+An evidence-traced scholarship discovery and monitoring dashboard for Indian students.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/api-server run dev` — starts the shared `/api` server and its FastAPI scholarship service.
+- `pnpm --filter @workspace/scholarship-intelligence run dev` — starts the React dashboard.
+- `python3 scripts/run_crawler.py` — runs one live crawl; add `--interval-hours 24` to repeat.
+- `python3 -m pytest` — runs the crawler, database, scoring, evidence, and status tests.
+- `pnpm run typecheck` — checks the TypeScript workspace.
+- `python3 scripts/simulate_changes.py` — runs a clearly labeled change example against an isolated demo database.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
-
-## Where things live
-
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
-
-## Architecture decisions
-
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- pnpm workspaces, Node.js, TypeScript, React, and Vite
+- FastAPI and Pydantic, bridged through the shared Express API
+- SQLite with SQLAlchemy
+- Requests, BeautifulSoup, optional Playwright fallback, and pypdf
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Discovers scholarship opportunities from configured primary-source websites.
+- Stores field-level excerpts, source URLs, extraction timestamps, deterministic verification scores, and historical changes.
+- Displays search, filters, scholarship details, crawl statistics, evidence, and score explanations.
+- Missing fields stay `Not specified`; the dashboard does not seed fake scholarship records.
 
-## User preferences
+## Architecture decisions
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- SQLite is the scholarship system of record because the assignment explicitly requires it; unrelated workspace database packages are not used by the crawler.
+- The dashboard calls typed generated hooks through `/api`; Express forwards app routes to the local FastAPI service.
+- The demo change script uses a separate SQLite file so simulated records never contaminate live totals.
+- Confidence is rule-based and thresholded at 95 points; an LLM is not used to invent values or scores.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- The API workflow must run for the dashboard's scholarship data routes.
+- A failed crawl is not evidence that a source disappeared. Only a successful official index check can mark an NSP record `NO_LONGER_VERIFIABLE`.
+- The first crawl can take time because sources and guideline PDFs are fetched respectfully and individually.
+- `requirements.txt` is the Python dependency list; in this hosted workspace the package manager also maintains the Python environment.

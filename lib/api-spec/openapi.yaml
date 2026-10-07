@@ -1,22 +1,22 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Scholarship discovery, evidence, verification, and crawl monitoring API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: scholarships
+  - name: crawler
+  - name: dashboard
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +24,238 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /scholarships:
+    get:
+      operationId: listScholarships
+      tags: [scholarships]
+      summary: Search and filter discovered scholarships
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: sourceType, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: verificationStatus, in: query, schema: { type: string } }
+        - { name: educationLevel, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: domicile, in: query, schema: { type: string } }
+        - { name: minConfidence, in: query, schema: { type: integer, minimum: 0, maximum: 100 } }
+        - { name: maxConfidence, in: query, schema: { type: integer, minimum: 0, maximum: 100 } }
+      responses:
+        "200":
+          description: Matching scholarships
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Scholarship" }
+  /scholarships/{scholarshipId}:
+    get:
+      operationId: getScholarship
+      tags: [scholarships]
+      summary: Get one scholarship and its traceability details
+      parameters:
+        - name: scholarshipId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Scholarship with evidence and history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScholarshipDetail" }
+        "404":
+          description: Scholarship not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Dashboard totals and recent crawl activity
+      responses:
+        "200":
+          description: Summary metrics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardSummary" }
+  /crawl-runs:
+    get:
+      operationId: listCrawlRuns
+      tags: [crawler]
+      summary: List recent crawler runs
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Recent runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CrawlRun" }
+  /crawler/run:
+    post:
+      operationId: runCrawler
+      tags: [crawler]
+      summary: Start a live crawler run using configured official seed sources
+      responses:
+        "202":
+          description: Crawl started or completed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrawlRun" }
+        "409":
+          description: A crawler run is already in progress
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 components:
   schemas:
     HealthStatus:
       type: object
       properties:
-        status:
-          type: string
+        status: { type: string }
+      required: [status]
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+    Scholarship:
+      type: object
       required:
-        - status
-
+        - id
+        - scholarshipName
+        - provider
+        - officialSourceUrl
+        - applicationUrl
+        - sourceType
+        - amount
+        - benefit
+        - eligibility
+        - academicRequirements
+        - educationLevel
+        - courseRequirements
+        - incomeCriteria
+        - ageCriteria
+        - genderCriteria
+        - categoryCriteria
+        - domicileRequirements
+        - institutionRequirements
+        - openingDate
+        - closingDate
+        - documentsRequired
+        - selectionProcess
+        - renewalRequirements
+        - currentStatus
+        - confidenceScore
+        - verificationStatus
+        - lastVerified
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string }
+        scholarshipName: { type: string }
+        provider: { type: string }
+        officialSourceUrl: { type: string, format: uri }
+        applicationUrl: { type: string }
+        sourceType: { type: string }
+        amount: { type: string }
+        benefit: { type: string }
+        eligibility: { type: string }
+        academicRequirements: { type: string }
+        educationLevel: { type: string }
+        courseRequirements: { type: string }
+        incomeCriteria: { type: string }
+        ageCriteria: { type: string }
+        genderCriteria: { type: string }
+        categoryCriteria: { type: string }
+        domicileRequirements: { type: string }
+        institutionRequirements: { type: string }
+        openingDate: { type: string }
+        closingDate: { type: string }
+        documentsRequired: { type: string }
+        selectionProcess: { type: string }
+        renewalRequirements: { type: string }
+        currentStatus: { type: string }
+        confidenceScore: { type: integer, minimum: 0, maximum: 100 }
+        verificationStatus: { type: string }
+        lastVerified: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    Evidence:
+      type: object
+      required: [id, fieldName, extractedValue, evidenceText, sourceUrl, capturedAt]
+      properties:
+        id: { type: string }
+        fieldName: { type: string }
+        extractedValue: { type: string }
+        evidenceText: { type: string }
+        sourceUrl: { type: string, format: uri }
+        capturedAt: { type: string }
+    Change:
+      type: object
+      required: [id, fieldChanged, oldValue, newValue, dateDetected, sourceUrl, evidence]
+      properties:
+        id: { type: string }
+        fieldChanged: { type: string }
+        oldValue: { type: string }
+        newValue: { type: string }
+        dateDetected: { type: string }
+        sourceUrl: { type: string, format: uri }
+        evidence: { type: string }
+        isDemo: { type: boolean }
+    ScoreItem:
+      type: object
+      required: [label, points, earned, reason]
+      properties:
+        label: { type: string }
+        points: { type: integer }
+        earned: { type: integer }
+        reason: { type: string }
+    ScholarshipDetail:
+      allOf:
+        - $ref: "#/components/schemas/Scholarship"
+        - type: object
+          required: [evidence, changeHistory, scoreBreakdown]
+          properties:
+            evidence:
+              type: array
+              items: { $ref: "#/components/schemas/Evidence" }
+            changeHistory:
+              type: array
+              items: { $ref: "#/components/schemas/Change" }
+            scoreBreakdown:
+              type: array
+              items: { $ref: "#/components/schemas/ScoreItem" }
+    CrawlRun:
+      type: object
+      required: [id, startedAt, completedAt, discoveredCount, newCount, updatedCount, changedCount, expiredCount, failedCount, status, message]
+      properties:
+        id: { type: string }
+        startedAt: { type: string }
+        completedAt: { type: string }
+        discoveredCount: { type: integer }
+        newCount: { type: integer }
+        updatedCount: { type: integer }
+        changedCount: { type: integer }
+        expiredCount: { type: integer }
+        failedCount: { type: integer }
+        status: { type: string }
+        message: { type: string }
+    DashboardSummary:
+      type: object
+      required: [totalDiscovered, verified, reviewRequired, active, expired, recentlyUpdated, averageConfidence, latestRun]
+      properties:
+        totalDiscovered: { type: integer }
+        verified: { type: integer }
+        reviewRequired: { type: integer }
+        active: { type: integer }
+        expired: { type: integer }
+        recentlyUpdated: { type: integer }
+        averageConfidence: { type: number }
+        latestRun:
+          anyOf:
+            - $ref: "#/components/schemas/CrawlRun"
+            - type: "null"

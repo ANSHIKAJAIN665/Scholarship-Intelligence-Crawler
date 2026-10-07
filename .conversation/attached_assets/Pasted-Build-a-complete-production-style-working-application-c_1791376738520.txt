@@ -1,0 +1,775 @@
+Build a complete production-style working application called:
+
+SCHOLARSHIP INTELLIGENCE CRAWLER
+
+This is an AI Engineer Intern assignment. I need a REAL WORKING SYSTEM, not a UI mockup.
+
+The system must discover, crawl, extract, verify, score, store, update and monitor REAL scholarship opportunities available to Indian students.
+
+IMPORTANT:
+- Do not create a fake/demo-only application.
+- Do not fabricate scholarship information.
+- Do not use paid APIs or paid scraping services.
+- Use free/open-source technologies only.
+- The final project must be runnable and testable.
+- Build both the backend intelligence engine and the frontend dashboard.
+- Use real official/primary scholarship sources.
+- Do not treat aggregator websites as authoritative sources.
+
+==================================================
+TECHNOLOGY STACK
+==================================================
+
+Use:
+
+Backend:
+- Python 3.11+
+- FastAPI
+
+Crawler:
+- Requests
+- BeautifulSoup
+- Playwright as fallback for JavaScript-heavy websites
+
+Database:
+- SQLite with SQLAlchemy
+
+Frontend:
+- React + Vite OR a clean Streamlit dashboard
+- Prefer Streamlit if it makes the complete system easier to implement reliably.
+
+AI:
+- Use open-source/local models where useful.
+- If Ollama is available, support Ollama for intelligent extraction/classification.
+- The system MUST still work if Ollama is unavailable.
+- Have deterministic rule-based fallback extraction.
+
+Other:
+- Pydantic
+- Pandas
+- python-dateutil
+- pytest
+
+Do NOT require paid API keys.
+
+==================================================
+CORE PIPELINE
+==================================================
+
+Implement this complete pipeline:
+
+DISCOVER
+   ↓
+CLASSIFY SOURCE
+   ↓
+CRAWL
+   ↓
+EXTRACT
+   ↓
+VERIFY OFFICIAL SOURCE
+   ↓
+CALCULATE CONFIDENCE
+   ↓
+STORE
+   ↓
+CHANGE DETECTION
+   ↓
+STATUS UPDATE
+   ↓
+DISPLAY
+
+The crawler must actually execute this pipeline.
+
+==================================================
+1. DISCOVERY ENGINE
+==================================================
+
+Do NOT hard-code 20 scholarship records.
+
+Create a discovery engine that starts with a small number of legitimate seed sources and discovers relevant scholarship pages/links.
+
+Potential source categories:
+
+- Government scholarship portals
+- Central government departments
+- State government departments
+- UGC
+- AICTE
+- Ministries
+- Universities
+- Corporate CSR programs
+- Foundations
+- Trusts
+- Legitimate scholarship providers
+
+The discovery process should:
+
+1. Start from seed URLs.
+2. Crawl the seed pages.
+3. Extract links.
+4. Identify scholarship-related links.
+5. Classify the source.
+6. Crawl relevant scholarship pages.
+7. Extract scholarship information.
+8. Verify the official source.
+9. Store the record.
+
+Respect robots.txt where applicable.
+Use reasonable request delays.
+Handle timeouts and HTTP errors gracefully.
+
+Create:
+
+crawler/discovery.py
+crawler/crawler.py
+crawler/source_classifier.py
+
+==================================================
+2. REAL SCHOLARSHIP EXTRACTION
+==================================================
+
+Extract structured information from scholarship webpages.
+
+Every scholarship should contain:
+
+- Scholarship name
+- Provider
+- Official source URL
+- Application URL
+- Source type
+- Amount / benefit
+- Eligibility
+- Academic requirements
+- Education level
+- Course requirements
+- Income criteria
+- Age criteria
+- Gender criteria
+- Category criteria
+- Domicile/state requirements
+- Institution requirements
+- Opening date
+- Closing date
+- Documents required
+- Selection process
+- Renewal requirements
+- Current status
+
+If information is NOT present on the official source:
+
+store:
+
+"Not specified"
+
+NEVER invent information.
+
+Create:
+
+crawler/extractor.py
+
+Use structured Pydantic models for validation.
+
+==================================================
+3. OFFICIAL SOURCE VERIFICATION
+==================================================
+
+This is one of the most important parts.
+
+A scholarship is NOT verified merely because an AI model found it.
+
+For every scholarship determine:
+
+- Is the source official?
+- Is the scholarship currently present on the official source?
+- Is there an official application URL?
+- Is eligibility supported by source evidence?
+- Is the deadline supported by source evidence?
+- Is the information current?
+- Are there conflicting sources?
+- Can important fields be traced to source evidence?
+
+Official sources include:
+
+- Government websites
+- Official ministry/department websites
+- Official university websites
+- Official organization/provider websites
+- Official scholarship portals
+
+Aggregators/blogs/articles can be used for discovery only.
+
+They must NOT be stored as the authoritative source.
+
+Create:
+
+crawler/verifier.py
+
+==================================================
+4. SOURCE EVIDENCE
+==================================================
+
+Every important extracted field must have source evidence.
+
+For example:
+
+Deadline:
+31 August 2026
+
+Evidence:
+"Applications close on 31 August 2026."
+
+Source:
+https://official-source...
+
+Store evidence in the database.
+
+Important fields requiring evidence:
+
+- Amount
+- Eligibility
+- Deadline
+- Academic requirements
+- Income criteria
+- Application URL
+
+The UI must allow me to see:
+
+DATABASE
+→ OFFICIAL SOURCE
+→ EVIDENCE
+→ EXTRACTED VALUE
+
+==================================================
+5. CONFIDENCE SCORE
+==================================================
+
+DO NOT ask an LLM to randomly generate a confidence score.
+
+Implement a deterministic confidence methodology.
+
+Use a 100-point scoring system.
+
+Suggested scoring:
+
+Official source verified = 25 points
+Scholarship found on official page = 20 points
+Official application URL = 15 points
+Eligibility supported by evidence = 10 points
+Deadline supported by evidence = 10 points
+Current information verified = 10 points
+Extraction/schema consistency = 5 points
+No conflicting official information = 5 points
+
+Total = 100.
+
+Store:
+
+confidence_score
+
+and:
+
+verification_status
+
+Rules:
+
+confidence >= 95:
+VERIFIED
+
+confidence < 95:
+REVIEW_REQUIRED
+
+Create:
+
+crawler/scorer.py
+
+The UI must show exactly WHY a scholarship received its score.
+
+Example:
+
+Official source verified       +25
+Official scholarship page     +20
+Application URL               +15
+Eligibility evidence          +10
+Deadline evidence             +10
+Current information           +10
+Schema consistency             +5
+No conflicts                   +5
+--------------------------------
+TOTAL                         100%
+
+==================================================
+6. ANTI-HALLUCINATION
+==================================================
+
+NEVER invent scholarship data.
+
+If the source says nothing about income:
+
+Income criteria: Not specified
+
+NOT:
+
+Income criteria: ₹5 lakh
+
+If a deadline cannot be found:
+
+Closing date: Not specified
+
+Do not infer or guess.
+
+==================================================
+7. DATABASE
+==================================================
+
+Use SQLite.
+
+Create these tables:
+
+scholarships
+crawl_runs
+source_evidence
+change_history
+
+Scholarship table fields:
+
+id
+scholarship_name
+provider
+official_source_url
+application_url
+source_type
+amount
+benefit
+eligibility
+academic_requirements
+education_level
+course_requirements
+income_criteria
+age_criteria
+gender_criteria
+category_criteria
+domicile_requirements
+institution_requirements
+opening_date
+closing_date
+documents_required
+selection_process
+renewal_requirements
+current_status
+confidence_score
+verification_status
+last_verified
+content_hash
+created_at
+updated_at
+
+Crawl runs:
+
+id
+started_at
+completed_at
+discovered_count
+new_count
+updated_count
+changed_count
+expired_count
+failed_count
+
+Source evidence:
+
+id
+scholarship_id
+field_name
+extracted_value
+evidence_text
+source_url
+captured_at
+
+Change history:
+
+id
+scholarship_id
+field_changed
+old_value
+new_value
+date_detected
+source_url
+evidence
+
+==================================================
+8. CHANGE DETECTION
+==================================================
+
+Do NOT simply overwrite old information.
+
+On every crawler run compare the newly extracted scholarship with the previous database record.
+
+Detect changes to:
+
+- Amount
+- Eligibility
+- Deadline
+- Opening date
+- Application URL
+- Documents
+- Academic requirements
+- Status
+
+Example:
+
+Previous:
+Deadline = 31 August 2026
+
+New:
+Deadline = 15 September 2026
+
+The system must display:
+
+CHANGE DETECTED
+
+and save:
+
+Old value
+New value
+Date detected
+Source
+Evidence
+
+Create:
+
+crawler/change_detector.py
+
+==================================================
+9. STALE / EXPIRED DETECTION
+==================================================
+
+Support these statuses:
+
+ACTIVE
+EXPIRING_SOON
+EXPIRED
+REVIEW_REQUIRED
+NO_LONGER_VERIFIABLE
+
+Rules:
+
+If closing date has passed:
+EXPIRED
+
+If official source no longer contains the scholarship:
+NO_LONGER_VERIFIABLE
+
+If source cannot be verified:
+REVIEW_REQUIRED
+
+Do not delete historical records.
+
+==================================================
+10. REPEATED CRAWLING
+==================================================
+
+The application must support repeated runs.
+
+Add a dashboard button:
+
+RUN CRAWLER NOW
+
+Every run should:
+
+- discover new scholarships
+- check existing scholarships
+- detect changes
+- update statuses
+- record crawl statistics
+
+Also implement a scheduler or command that allows recurring crawling.
+
+Create:
+
+scripts/run_crawler.py
+
+==================================================
+11. MINIMUM DATA REQUIREMENT
+==================================================
+
+The final working system must aim to produce:
+
+20+ REAL scholarship records
+15+ verified against official sources
+10+ with confidence >=95%
+3+ different source types
+2+ change detection examples
+2+ expired/stale detection examples
+
+DO NOT fabricate these records.
+
+If live crawling cannot immediately produce 20 records, clearly show the number actually discovered rather than inventing records.
+
+==================================================
+12. DASHBOARD
+==================================================
+
+Create a professional dashboard named:
+
+SCHOLARSHIP INTELLIGENCE
+
+Top statistics:
+
+TOTAL DISCOVERED
+VERIFIED
+REVIEW REQUIRED
+ACTIVE
+EXPIRED
+RECENTLY UPDATED
+AVERAGE CONFIDENCE
+
+Add:
+
+Search
+Filters
+Source type filter
+Status filter
+Verification filter
+Confidence filter
+Education level filter
+Category filter
+State/domicile filter
+
+Display a scholarship table:
+
+Scholarship
+Provider
+Amount
+Deadline
+Source Type
+Status
+Confidence
+Verification
+
+==================================================
+13. SCHOLARSHIP DETAILS
+==================================================
+
+Clicking a scholarship should open a detailed page showing:
+
+Scholarship Name
+Provider
+Amount / Benefit
+Eligibility
+Academic Requirements
+Education Level
+Course Requirements
+Income Criteria
+Age Criteria
+Gender Criteria
+Category Criteria
+Domicile
+Institution Requirements
+Opening Date
+Closing Date
+Documents Required
+Selection Process
+Renewal Requirements
+Official Source
+Application URL
+Current Status
+Confidence Score
+Verification Status
+Last Verified
+
+Also show:
+
+WHY THIS SCORE?
+
+SOURCE EVIDENCE
+
+CHANGE HISTORY
+
+==================================================
+14. CRAWL MONITORING
+==================================================
+
+Create a page showing previous crawler runs.
+
+For each run show:
+
+Run ID
+Start time
+End time
+Discovered
+New
+Updated
+Changed
+Expired
+Failed
+
+==================================================
+15. DEMONSTRATION OF CHANGE DETECTION
+==================================================
+
+Create:
+
+scripts/simulate_changes.py
+
+This should safely demonstrate the change detection functionality using a clearly labelled DEMO record or controlled test data.
+
+Example:
+
+OLD DEADLINE:
+31 August 2026
+
+NEW DEADLINE:
+15 September 2026
+
+Expected result:
+
+CHANGE DETECTED
+
+The database must retain both values.
+
+Clearly label simulated changes as DEMO DATA.
+
+==================================================
+16. TESTING
+==================================================
+
+Create automated tests using pytest.
+
+Test:
+
+- Database creation
+- Scholarship insertion
+- Extraction
+- Missing fields
+- Date parsing
+- Official source verification
+- Confidence calculation
+- Confidence threshold
+- Change detection
+- Expired detection
+- Evidence storage
+
+Run the tests and fix failures.
+
+==================================================
+17. PROJECT STRUCTURE
+==================================================
+
+Use a clean structure:
+
+scholarship-intelligence-crawler/
+
+├── app.py
+├── requirements.txt
+├── README.md
+├── .gitignore
+├── .env.example
+│
+├── crawler/
+│   ├── discovery.py
+│   ├── crawler.py
+│   ├── source_classifier.py
+│   ├── extractor.py
+│   ├── verifier.py
+│   ├── scorer.py
+│   ├── change_detector.py
+│   └── status_detector.py
+│
+├── database/
+│   ├── database.py
+│   └── schema.sql
+│
+├── models/
+│   └── scholarship.py
+│
+├── scripts/
+│   ├── run_crawler.py
+│   └── simulate_changes.py
+│
+├── tests/
+│   ├── test_database.py
+│   ├── test_extractor.py
+│   ├── test_verifier.py
+│   ├── test_scorer.py
+│   ├── test_change_detector.py
+│   └── test_status_detector.py
+│
+└── data/
+    └── scholarships.db
+
+You may improve the structure if necessary.
+
+==================================================
+18. README
+==================================================
+
+Create a professional README containing:
+
+Project Overview
+Problem Statement
+Architecture
+Technology Stack
+Features
+Discovery Methodology
+Extraction Methodology
+Verification Methodology
+Confidence Score Methodology
+Anti-Hallucination Approach
+Change Detection
+Stale Data Detection
+Database Schema
+Installation
+How to Run
+How to Run Crawler
+How to Start Dashboard
+How to Run Tests
+Demo Instructions
+Limitations
+Future Improvements
+
+Only document functionality that actually exists.
+
+==================================================
+19. FINAL TEST
+==================================================
+
+Before declaring the project finished:
+
+1. Install dependencies.
+2. Create database.
+3. Start application.
+4. Run crawler.
+5. Discover real scholarship pages.
+6. Extract data.
+7. Verify official sources.
+8. Calculate confidence.
+9. Store records.
+10. Display records in dashboard.
+11. Run crawler again.
+12. Detect unchanged records.
+13. Detect changed records.
+14. Preserve old and new values.
+15. Detect expired/stale scholarships.
+16. Run all tests.
+17. Fix all errors.
+
+IMPORTANT:
+Do not stop after generating files.
+
+Actually RUN the project and TEST it.
+
+If something fails, debug and fix it.
+
+At the end, tell me:
+- what files were created
+- how to run the application
+- how to run the crawler
+- how to run tests
+- what real sources were successfully crawled
+- how many real scholarships were found
+- how many were verified
+- average confidence
+- whether change detection works
+- whether stale detection works
+
+Build the complete application now.

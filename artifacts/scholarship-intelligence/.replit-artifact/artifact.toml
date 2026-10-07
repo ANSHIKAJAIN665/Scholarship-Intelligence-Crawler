@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Scholarship Intelligence"
+description = "A scholarship discovery and monitoring system for Indian students, with evidence-traced records, deterministic verification scores, source status, and change history."
+version = "1.0.0"
+id = "artifacts/scholarship-intelligence"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20445
+
+[services.development]
+run = "pnpm --filter @workspace/scholarship-intelligence run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/scholarship-intelligence", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/scholarship-intelligence/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20445"
+BASE_PATH = "/"
