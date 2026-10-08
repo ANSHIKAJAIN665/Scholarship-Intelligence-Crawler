@@ -25,6 +25,7 @@ from crawler.extractor import (
     Candidate,
     extract_pdf_text,
     extract_record,
+    is_portal_or_navigation_page,
     is_specific_scholarship_title,
     is_valid_field_value,
 )
@@ -100,14 +101,24 @@ def _candidate_conflicts(candidates: list[Candidate]) -> set[int]:
 def _fetch_guideline(fetcher: RespectfulFetcher, candidate: Candidate) -> tuple[str, str | None]:
     if not candidate.guideline_url or not is_official_domain(candidate.guideline_url, TRUSTED_SEED_HOSTS):
         return "", None
+    if is_portal_or_navigation_page(candidate.guideline_url):
+        return "", None
     try:
         response = fetcher.get(candidate.guideline_url)
-        if "pdf" not in response.headers.get("content-type", "").casefold() and not candidate.guideline_url.casefold().endswith(".pdf"):
-            return "", None
-        text = extract_pdf_text(response.content)
-        if not text:
-            return "", f"{candidate.guideline_url}: PDF downloaded but no selectable text was extracted"
-        return text, None
+        content_type = response.headers.get("content-type", "").casefold()
+        if "pdf" in content_type or candidate.guideline_url.casefold().endswith(".pdf"):
+            text = extract_pdf_text(response.content)
+            if not text:
+                return "", f"{candidate.guideline_url}: PDF downloaded but no selectable text was extracted"
+            return text, None
+        if "html" in content_type or "text/" in content_type:
+            from bs4 import BeautifulSoup
+
+            text = " ".join(BeautifulSoup(response.text, "html.parser").get_text(" ", strip=True).split())
+            if len(text) < 80:
+                return "", None
+            return text, None
+        return "", None
     except Exception as exc:
         return "", f"{candidate.guideline_url}: {type(exc).__name__}: {str(exc)[:240]}"
 
@@ -146,7 +157,7 @@ def _is_specialized_source(record: Scholarship) -> bool:
     path = urlparse(record.official_source_url).path.casefold().rstrip("/")
     return (
         (host == "scholarships.gov.in" and path.endswith("/all-scholarships"))
-        or (host.endswith("iitm.ac.in") and "scholarship" in path)
+        or (host.endswith(".ac.in") and "scholarship" in path)
         or (host == "tatatrusts.org" and "/education/education-grants" in path)
     )
 
@@ -238,6 +249,7 @@ def cleanup_existing_records(
         )
         is_supported_record = (
             is_specific_scholarship_title(record.scholarship_name)
+            and not is_portal_or_navigation_page(record.official_source_url, record.scholarship_name)
             and is_official_domain(record.official_source_url)
             and (_is_specialized_source(record) or has_supported_opportunity_fact)
         )
@@ -546,7 +558,9 @@ def execute_crawl_run(run_id: str, discovery: DiscoveryResult | None = None) -> 
                     run.failed_count += 1
                     continue
                 official = is_official_domain(candidate.source_url, TRUSTED_SEED_HOSTS)
-                if not official:
+                if not official or is_portal_or_navigation_page(
+                    candidate.source_url, candidate.scholarship_name
+                ) or not is_specific_scholarship_title(candidate.scholarship_name):
                     run.failed_count += 1
                     continue
                 try:

@@ -30,3 +30,15 @@ def test_statuses_do_not_assume_unknown_deadlines_are_active():
         application_closed=True,
         today=today,
     ) == "EXPIRED"
+
+
+def test_stale_and_expired_statuses_are_explicit():
+    today = date(2026, 10, 8)
+    assert detect_status("01 January 2026", source_verified=True, scholarship_present=True, today=today) == "EXPIRED"
+    assert detect_status(
+        "31 December 2026",
+        source_verified=True,
+        scholarship_present=False,
+        today=today,
+    ) == "NO_LONGER_VERIFIABLE"
+    assert detect_status("20 October 2026", source_verified=True, scholarship_present=True, today=today) == "EXPIRING_SOON"

@@ -5,11 +5,11 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from crawler.source_classifier import classify_source, normalized_identity
+from crawler.source_classifier import classify_source, normalized_identity, normalized_host
 from crawler.status_detector import NOT_SPECIFIED, detect_status
 from models.scholarship import ScholarshipData
 
@@ -19,9 +19,9 @@ GENERIC_OPPORTUNITY_TITLES = {
     "all scholarship",
     "fellowship opportunities",
     "national scholarship portal",
+    "nsp",
     "nsp national scholarship portal",
     "scholarship and fellowship information",
-    "scholarship and grants",
     "scholarship and grants",
     "scholarship application",
     "scholarship eligibility",
@@ -32,6 +32,120 @@ GENERIC_OPPORTUNITY_TITLES = {
     "scholarships and grants",
     "student scholarships",
     "student scholarship",
+}
+PORTAL_PAGE_TITLES = GENERIC_OPPORTUNITY_TITLES | {
+    "about",
+    "about us",
+    "application status",
+    "check application status",
+    "contact",
+    "contact us",
+    "copyright",
+    "copyright policy",
+    "disclaimer",
+    "faq",
+    "faqs",
+    "fellowship login",
+    "frequently asked questions",
+    "help",
+    "helpdesk",
+    "help desk",
+    "home",
+    "institute",
+    "institute search",
+    "institutes",
+    "login",
+    "nodal officers",
+    "officers",
+    "otr",
+    "otr application",
+    "privacy",
+    "privacy policy",
+    "sign in",
+    "signin",
+    "sitemap",
+    "site map",
+    "terms",
+    "terms and conditions",
+    "terms of use",
+}
+PORTAL_PATH_SEGMENTS = {
+    "about",
+    "about-us",
+    "aboutus",
+    "application-status",
+    "applicationstatus",
+    "check-status",
+    "checkstatus",
+    "contact",
+    "contact-us",
+    "contactus",
+    "copyright",
+    "copyright-policy",
+    "disclaimer",
+    "faq",
+    "faqs",
+    "fellowship-login",
+    "help",
+    "help-desk",
+    "helpdesk",
+    "home",
+    "index",
+    "index.html",
+    "index.php",
+    "institute",
+    "institute-search",
+    "institutes",
+    "institutesearch",
+    "login",
+    "nodal-officer",
+    "nodalofficer",
+    "nodalofficers",
+    "officer",
+    "officers",
+    "otr",
+    "otrapplication",
+    "privacy",
+    "privacy-policy",
+    "privacypolicy",
+    "sign-in",
+    "signin",
+    "site-map",
+    "sitemap",
+    "terms",
+    "terms-and-conditions",
+    "termsofuse",
+}
+PORTAL_TITLE_MARKERS = (
+    "application status",
+    "copyright policy",
+    "fellowship login",
+    "help desk",
+    "helpdesk",
+    "institute search",
+    "privacy policy",
+    "site map",
+    "sitemap",
+    "terms and conditions",
+)
+MALFORMED_FIELD_VALUES = {
+    "amount",
+    "amount:",
+    "benefit",
+    "benefit:",
+    "closing date",
+    "deadline",
+    "deadline:",
+    "eligibility",
+    "eligibility:",
+    "inr",
+    "not specified",
+    "not stated",
+    "opening date",
+    "rs",
+    "rs.",
+    "unknown",
+    "₹",
 }
 FIELD_PATTERNS: dict[str, tuple[str, ...]] = {
     "amount": (
@@ -84,10 +198,58 @@ def _clean(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+def is_portal_or_navigation_page(url: str, title: str = "") -> bool:
+    """Reject home/about/FAQ/login and other portal pages that are not named opportunities."""
+    parsed = urlparse(url)
+    path = (parsed.path or "/").casefold().rstrip("/")
+    last_segment = path.rsplit("/", 1)[-1]
+    if last_segment in PORTAL_PATH_SEGMENTS:
+        return True
+    if any(
+        marker in path
+        for marker in (
+            "/faq",
+            "/helpdesk",
+            "/login",
+            "/otr",
+            "applicationstatus",
+            "application-status",
+            "copyright",
+            "disclaimer",
+            "institutesearch",
+            "institute-search",
+            "nodalofficer",
+            "privacy-policy",
+            "privacypolicy",
+            "sitemap",
+            "site-map",
+        )
+    ):
+        return True
+    host = normalized_host(url)
+    if host == "scholarships.gov.in" and last_segment in {"", "en", "hi"}:
+        return True
+    normalized_title = normalized_identity(title)
+    if normalized_title in PORTAL_PAGE_TITLES:
+        return True
+    if any(marker in normalized_title for marker in PORTAL_TITLE_MARKERS):
+        return True
+    if re.fullmatch(
+        r"(?:nsp )?national scholarship portal|"
+        r"(?:home|about(?: us)?|contact(?: us)?|faqs?|login|sign in|"
+        r"officers?|institutes?|otr|disclaimer|terms|privacy|help(?:desk)?)",
+        normalized_title,
+    ):
+        return True
+    return False
+
+
 def is_specific_scholarship_title(value: str) -> bool:
     """Reject portal/navigation headings that mention awards but name no opportunity."""
     normalized = normalized_identity(value)
-    if not normalized or normalized in GENERIC_OPPORTUNITY_TITLES:
+    if not normalized or normalized in PORTAL_PAGE_TITLES:
+        return False
+    if is_portal_or_navigation_page("https://example.invalid/", value):
         return False
     if "faculty fellowship" in normalized:
         return False
@@ -101,6 +263,9 @@ def is_specific_scholarship_title(value: str) -> bool:
     descriptive_tokens = set(normalized.split()) - {
         "all", "and", "application", "details", "eligibility", "fellowship", "list",
         "grant", "grants", "opportunities", "portal", "scheme", "scholarship", "stipend",
+        "login", "status", "home", "about", "faq", "helpdesk", "contact", "officer",
+        "officers", "institute", "institutes", "otr", "privacy", "policy", "terms",
+        "disclaimer", "sitemap", "help", "desk",
     }
     return bool(descriptive_tokens)
 
@@ -144,9 +309,12 @@ def _has_benefit_context(value: str, evidence_text: str = "") -> bool:
 def is_valid_field_value(field_name: str, value: str, evidence_text: str = "") -> bool:
     """Reject labels, incomplete values, and facts whose source excerpt does not support the field."""
     value = _clean(value)
-    if not value or normalized_identity(value) in {
-        "not specified", "not stated", "unknown", "amount", "eligibility", "deadline",
-    }:
+    compact = normalized_identity(value)
+    if not value or compact in MALFORMED_FIELD_VALUES:
+        return False
+    if re.fullmatch(r"(?:amount|benefit|deadline|eligibility|opening date|closing date)\s*:?", compact):
+        return False
+    if re.fullmatch(r"(?:rs\.?|inr|₹)\s*:?", value.strip(), flags=re.IGNORECASE):
         return False
     if field_name in ("opening_date", "closing_date"):
         return bool(EXPLICIT_DATE_PATTERN.search(value) or EXPLICIT_DATE_PATTERN.search(evidence_text))
@@ -273,7 +441,11 @@ def parse_nsp_listings(html: str, page_url: str) -> list[Candidate]:
         name = row_text[: cutoff.start()] if cutoff else row_text
         name = re.sub(r"\s*\((?:merit|welfare)\s+based\s+scheme\)\s*$", "", name, flags=re.IGNORECASE)
         name = _clean(name)
-        if not name or not any(word in name.casefold() for word in SCHOLARSHIP_TERMS):
+        if (
+            not name
+            or not is_specific_scholarship_title(name)
+            or is_portal_or_navigation_page(page_url, name)
+        ):
             continue
         provider = "Not specified"
         ministry = anchor.find_parent(class_="accordion-item")
@@ -336,10 +508,13 @@ def parse_nsp_listings(html: str, page_url: str) -> list[Candidate]:
     return found
 
 
-def parse_iitm_scholarships(html: str, page_url: str) -> list[Candidate]:
-    """Extract IIT Madras' published scholarship tables as separate, evidence-backed entries."""
+def parse_iitm_scholarships(
+    html: str,
+    page_url: str,
+    provider: str = "Indian Institute of Technology Madras",
+) -> list[Candidate]:
+    """Extract published scholarship tables as separate, evidence-backed entries."""
     soup = BeautifulSoup(html, "html.parser")
-    provider = "Indian Institute of Technology Madras"
     found: list[Candidate] = []
     seen: set[str] = set()
     for table in soup.find_all("table"):
@@ -358,7 +533,13 @@ def parse_iitm_scholarships(html: str, page_url: str) -> list[Candidate]:
             name = _clean(cells[scholarship_index].get_text(" ", strip=True))
             eligibility = _clean(cells[eligibility_index].get_text(" ", strip=True))
             amount = _clean(cells[amount_index].get_text(" ", strip=True))
-            if not name or name.casefold() in {"scholarship", "sl.no scholarship"} or name in seen:
+            if (
+                not name
+                or name.casefold() in {"scholarship", "sl.no scholarship"}
+                or name in seen
+                or not is_specific_scholarship_title(name)
+                or is_portal_or_navigation_page(page_url, name)
+            ):
                 continue
             seen.add(name)
             row_text = " | ".join((name, eligibility, amount))
@@ -380,7 +561,7 @@ def parse_iitm_scholarships(html: str, page_url: str) -> list[Candidate]:
                     scholarship_name=name,
                     source_url=page_url,
                     provider=provider,
-                    source_type="university",
+                    source_type=classify_source(page_url),
                     listing_text=row_text,
                     evidence=evidence,
                 )
@@ -527,7 +708,7 @@ def extract_page_candidate(
         title = _clean(soup.title.get_text(" ", strip=True))
     title = re.sub(r"\s*[|–-]\s*(?:official website|home|department.*)$", "", title, flags=re.IGNORECASE)
     text = _clean(soup.get_text(" ", strip=True))
-    if not is_specific_scholarship_title(title):
+    if not is_specific_scholarship_title(title) or is_portal_or_navigation_page(page_url, title):
         return None
     candidate = Candidate(
         scholarship_name=title,
@@ -679,10 +860,16 @@ def extract_record(
         field_evidence.get(field_name)
         for field_name in ("eligibility", "benefit", "amount")
     )
-    verification["critical_evidence_valid"] = not malformed_fields and has_core_evidence
+    schema_consistent = (
+        not malformed_fields
+        and has_core_evidence
+        and is_specific_scholarship_title(candidate.scholarship_name)
+        and not is_portal_or_navigation_page(candidate.source_url, candidate.scholarship_name)
+    )
+    verification["critical_evidence_valid"] = schema_consistent
     verification["specific_opportunity"] = is_specific_scholarship_title(candidate.scholarship_name)
     score, verification_status, breakdown = calculate_confidence(
-        {**verification, "schema_consistent": True}
+        {**verification, "schema_consistent": schema_consistent}
     )
     serializable["confidence_score"] = score
     serializable["verification_status"] = verification_status

@@ -2,8 +2,11 @@ from crawler.extractor import (
     Candidate,
     extract_page_candidate,
     extract_record,
+    is_portal_or_navigation_page,
     is_specific_scholarship_title,
+    is_valid_field_value,
     parse_iitm_scholarships,
+    parse_nsp_listings,
     parse_tata_education_grants,
 )
 from models.scholarship import ScholarshipData
@@ -78,6 +81,46 @@ def test_navigation_and_portal_titles_are_not_opportunity_candidates():
     assert is_specific_scholarship_title("National Merit Scholarship for Rural Students")
 
 
+def test_portal_pages_are_rejected_by_url_and_title():
+    rejected = [
+        ("https://scholarships.gov.in/", "Home"),
+        ("https://scholarships.gov.in/AboutUs", "About"),
+        ("https://scholarships.gov.in/FAQ", "FAQ"),
+        ("https://scholarships.gov.in/Helpdesk", "Helpdesk"),
+        ("https://scholarships.gov.in/Login", "Login"),
+        ("https://scholarships.gov.in/ApplicationStatus", "Application Status"),
+        ("https://scholarships.gov.in/OTR", "OTR"),
+        ("https://scholarships.gov.in/Officers", "Officers"),
+        ("https://scholarships.gov.in/InstituteSearch", "Institute search"),
+        ("https://scholarships.gov.in/Sitemap", "Sitemap"),
+        ("https://scholarships.gov.in/PrivacyPolicy", "Privacy Policy"),
+        ("https://scholarships.gov.in/Terms", "Terms"),
+        ("https://scholarships.gov.in/Disclaimer", "Disclaimer"),
+        ("https://scholarships.gov.in/ContactUs", "Contact"),
+        ("https://scholarships.gov.in/CopyrightPolicy", "Copyright Policy"),
+        ("https://scholarships.gov.in/fellowship-login", "Fellowship login"),
+    ]
+    for url, title in rejected:
+        assert is_portal_or_navigation_page(url, title), (url, title)
+        assert not is_specific_scholarship_title(title)
+        assert extract_page_candidate(
+            f"<html><head><title>{title}</title></head><body><h1>{title}</h1>"
+            "<p>Eligible students must have passed Class 12.</p></body></html>",
+            url,
+        ) is None
+    assert not is_portal_or_navigation_page(
+        "https://scholarships.gov.in/All-Scholarships",
+        "Pre Matric Scholarship for SC Students",
+    )
+
+
+def test_malformed_labels_are_not_valid_extracted_values():
+    for value in ("Rs.", "₹", "amount:", "deadline:", "eligibility:"):
+        assert not is_valid_field_value("amount", value, value)
+        assert not is_valid_field_value("eligibility", value, value)
+        assert not is_valid_field_value("closing_date", value, value)
+
+
 def test_malformed_amount_eligibility_and_deadline_are_not_stored_or_verified():
     url = "https://sample.gov.in/merit-scholarship"
     candidate = Candidate(
@@ -137,3 +180,20 @@ def test_amount_pattern_requires_a_numeric_source_value():
     assert record.amount == "Not specified"
     assert not any(item["field_name"] == "amount" for item in evidence)
     assert record.verification_status == "REVIEW_REQUIRED"
+
+
+def test_nsp_listing_cards_become_named_candidates():
+    html = """
+    <div class="accordion-item">
+      <button>Ministry of Social Justice and Empowerment</button>
+      <div class="row border-bottom">
+        Pre Matric Scholarship for SC Students (Merit based scheme)
+        Open from : 01-04-2026 Student Application Open till : 31-10-2026
+        <a href="/guidelines/pre-matric-sc.pdf">Specifications</a>
+      </div>
+    </div>
+    """
+    records = parse_nsp_listings(html, "https://scholarships.gov.in/All-Scholarships")
+    assert len(records) == 1
+    assert records[0].scholarship_name == "Pre Matric Scholarship for SC Students"
+    assert records[0].evidence["closing_date"]["value"] == "31-10-2026"

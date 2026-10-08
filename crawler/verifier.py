@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+from crawler.extractor import is_valid_field_value
 from crawler.source_classifier import is_official_domain, normalized_host
 
 
@@ -43,8 +44,10 @@ def verify_official_source(
         "scholarship_found_on_official_page": official and name_supported,
         "official_application_url": application_url != "Not specified"
         and _same_official_owner(source_url, application_url, trusted_seed_hosts),
-        "eligibility_supported": bool(evidence.get("eligibility")),
-        "deadline_supported": bool(evidence.get("closing_date")),
+        "eligibility_supported": bool(evidence.get("eligibility"))
+        and is_valid_field_value("eligibility", evidence.get("eligibility", ""), evidence.get("eligibility", "")),
+        "deadline_supported": bool(evidence.get("closing_date"))
+        and is_valid_field_value("closing_date", evidence.get("closing_date", ""), evidence.get("closing_date", "")),
         "current_information_verified": current_page_checked and official,
         "no_conflicting_official_information": not conflicting_information,
     }

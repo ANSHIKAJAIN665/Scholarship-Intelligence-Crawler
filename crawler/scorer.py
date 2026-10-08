@@ -23,6 +23,7 @@ def calculate_confidence(signals: dict[str, Any]) -> tuple[int, str, list[dict[s
     if signals.get("specific_opportunity") is False:
         signals["scholarship_found_on_official_page"] = False
         signals["schema_consistent"] = False
+        signals["official_application_url"] = False
     breakdown = []
     total = 0
     for label, key, points in SCORE_RULES:

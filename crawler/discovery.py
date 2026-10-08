@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from crawler.extractor import (
     Candidate,
     extract_page_candidate,
+    is_portal_or_navigation_page,
     is_specific_scholarship_title,
     parse_iitm_scholarships,
     parse_nsp_listings,
@@ -26,9 +27,9 @@ from crawler.source_classifier import (
 )
 
 USER_AGENT = "ScholarshipIntelligenceCrawler/1.0 (+official-source research; requests are rate-limited)"
-REQUEST_TIMEOUT = 18
+REQUEST_TIMEOUT = 28
 REQUEST_DELAY_SECONDS = 0.5
-MAX_CANDIDATES = 100
+MAX_CANDIDATES = 140
 SEED_SOURCES = [
     {
         "url": "https://scholarships.gov.in/All-Scholarships",
@@ -46,9 +47,24 @@ SEED_SOURCES = [
         "provider": "Indian Institute of Technology Madras",
     },
     {
+        "url": "https://www.iitk.ac.in/doaa/scholarships",
+        "source_type": "university",
+        "provider": "Indian Institute of Technology Kanpur",
+    },
+    {
+        "url": "https://socialjustice.gov.in/scheme-list",
+        "source_type": "government",
+        "provider": "Department of Social Justice and Empowerment",
+    },
+    {
         "url": "https://socialjustice.gov.in/",
         "source_type": "government",
         "provider": "Department of Social Justice and Empowerment",
+    },
+    {
+        "url": "https://www.ugc.gov.in/page/Scholarships-Fellowships.aspx",
+        "source_type": "government",
+        "provider": "University Grants Commission",
     },
     {
         "url": "https://www.tatatrusts.org/our-work/education/education-grants",
@@ -170,20 +186,26 @@ def discover_candidates(fetcher: RespectfulFetcher | None = None) -> DiscoveryRe
             if is_nsp_listing:
                 for candidate in parse_nsp_listings(response.text, response.url):
                     candidates.setdefault(_candidate_key(candidate), candidate)
-            elif host == "iitm.ac.in" and "scholarship" in response.url.casefold():
-                for candidate in parse_iitm_scholarships(response.text, response.url):
+            elif "scholarship" in response.url.casefold() and classify_source(response.url, TRUSTED_SEED_HOSTS) == "university":
+                for candidate in parse_iitm_scholarships(
+                    response.text,
+                    response.url,
+                    provider=source.get("provider", "Not specified"),
+                ):
                     candidates.setdefault(_candidate_key(candidate), candidate)
             elif host == "tatatrusts.org" and "education-grants" in response.url.casefold():
                 for candidate in parse_tata_education_grants(response.text, response.url):
                     candidates.setdefault(_candidate_key(candidate), candidate)
-            elif source.get("is_detail"):
+            elif source.get("is_detail") and not is_portal_or_navigation_page(
+                response.url, source.get("title_hint", "")
+            ):
                 candidate = extract_page_candidate(
                     response.text,
                     response.url,
                     title_hint=source.get("title_hint", ""),
                     provider_hint=source.get("provider", "Not specified"),
                 )
-                if candidate:
+                if candidate and not is_portal_or_navigation_page(candidate.source_url, candidate.scholarship_name):
                     candidate.source_type = classify_source(candidate.source_url, TRUSTED_SEED_HOSTS)
                     if candidate.source_type not in ("aggregator", "unverified"):
                         candidates.setdefault(_candidate_key(candidate), candidate)
@@ -196,32 +218,9 @@ def discover_candidates(fetcher: RespectfulFetcher | None = None) -> DiscoveryRe
                     continue
                 if not is_official_domain(href, TRUSTED_SEED_HOSTS):
                     continue
-                label_lower = label.casefold()
-                path_lower = href_parts.path.casefold()
                 if not is_specific_scholarship_title(label):
                     continue
-                if any(
-                    marker in path_lower
-                    for marker in (
-                        "announcement",
-                        "copyright",
-                        "disclaimer",
-                        "faq",
-                        "helpdesk",
-                        "institute",
-                        "institution",
-                        "login",
-                        "nodalofficer",
-                        "officer",
-                        "otrapplication",
-                        "payl",
-                        "privacy",
-                        "recognitions",
-                        "sitemap",
-                        "site-map",
-                        "terms",
-                    )
-                ):
+                if is_portal_or_navigation_page(href, label):
                     continue
                 if href not in seen_urls and len(seen_urls) + len(queue) < MAX_CANDIDATES:
                     link_provider = source.get("provider", "Not specified")

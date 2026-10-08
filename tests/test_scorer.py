@@ -31,6 +31,14 @@ def test_95_point_threshold_is_verified():
     assert status == "VERIFIED"
 
 
+def test_generic_portal_page_cannot_be_verified():
+    signals = {key: True for _, key, _ in __import__("crawler.scorer", fromlist=["SCORE_RULES"]).SCORE_RULES}
+    signals["specific_opportunity"] = False
+    score, status, _ = calculate_confidence(signals)
+    assert score < 95
+    assert status == "REVIEW_REQUIRED"
+
+
 def test_malformed_critical_evidence_cannot_keep_a_95_plus_score():
     signals = {key: True for _, key, _ in __import__("crawler.scorer", fromlist=["SCORE_RULES"]).SCORE_RULES}
     signals["critical_evidence_valid"] = False

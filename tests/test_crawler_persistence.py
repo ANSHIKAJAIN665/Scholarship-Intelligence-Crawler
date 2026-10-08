@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 
 from crawler.crawler import _persist_candidate, cleanup_existing_records
+from crawler.extractor import is_portal_or_navigation_page
 from crawler.extractor import Candidate
 from database.models import ChangeHistory, Scholarship, SourceEvidence
 from models.scholarship import utc_now_iso
@@ -145,3 +146,38 @@ def test_cleanup_merges_existing_rows_and_preserves_evidence_and_history(
     )
     assert history is not None
     assert history.old_value == "31 October 2026"
+
+
+def test_cleanup_removes_portal_pages_kept_as_scholarships(db_session, scholarship_values):
+    db_session.add(
+        Scholarship(
+            **{
+                **scholarship_values,
+                "id": "portal-home",
+                "scholarship_name": "NSP : National Scholarship Portal",
+                "official_source_url": "https://scholarships.gov.in/",
+                "eligibility": "Students must meet the published criteria.",
+            }
+        )
+    )
+    db_session.add(
+        SourceEvidence(
+            id="portal-eligibility",
+            scholarship_id="portal-home",
+            field_name="eligibility",
+            extracted_value="Students must meet the published criteria.",
+            evidence_text="Students must meet the published criteria.",
+            source_url="https://scholarships.gov.in/",
+            captured_at=utc_now_iso(),
+        )
+    )
+    db_session.flush()
+    assert is_portal_or_navigation_page("https://scholarships.gov.in/", "NSP : National Scholarship Portal")
+    removed, merged = cleanup_existing_records(
+        db_session,
+        checked_source_urls=set(),
+        fresh_since=datetime.now(timezone.utc).isoformat(),
+    )
+    assert removed == 1
+    assert merged == 0
+    assert list(db_session.scalars(select(Scholarship)).all()) == []
