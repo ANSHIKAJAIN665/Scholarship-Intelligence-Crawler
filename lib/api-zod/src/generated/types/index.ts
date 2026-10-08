@@ -9,6 +9,7 @@
 export * from './change';
 export * from './crawlRun';
 export * from './dashboardSummary';
+export * from './demoChange';
 export * from './error';
 export * from './evidence';
 export * from './healthStatus';

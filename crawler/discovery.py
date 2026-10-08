@@ -17,7 +17,13 @@ from crawler.extractor import (
     parse_nsp_listings,
     parse_tata_education_grants,
 )
-from crawler.source_classifier import classify_source, is_official_domain, normalized_host
+from crawler.source_classifier import (
+    classify_source,
+    is_official_domain,
+    normalized_host,
+    normalized_identity,
+    normalized_page_identity,
+)
 
 USER_AGENT = "ScholarshipIntelligenceCrawler/1.0 (+official-source research; requests are rate-limited)"
 REQUEST_TIMEOUT = 18
@@ -136,8 +142,7 @@ class RespectfulFetcher:
 
 
 def _candidate_key(candidate: Candidate) -> tuple[str, str]:
-    title = "".join(character for character in candidate.scholarship_name.casefold() if character.isalnum())
-    return title, normalized_host(candidate.source_url)
+    return normalized_identity(candidate.scholarship_name), normalized_page_identity(candidate.source_url)
 
 
 def discover_candidates(fetcher: RespectfulFetcher | None = None) -> DiscoveryResult:

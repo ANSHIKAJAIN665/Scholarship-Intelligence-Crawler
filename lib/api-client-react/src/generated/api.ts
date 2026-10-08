@@ -22,6 +22,7 @@ import type {
 import type {
   CrawlRun,
   DashboardSummary,
+  DemoChange,
   Error,
   HealthStatus,
   ListCrawlRunsParams,
@@ -360,6 +361,83 @@ export function useGetDashboardSummary<TData = Awaited<ReturnType<typeof getDash
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetDashboardSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListDemoChangeHistoryUrl = () => {
+
+
+
+
+  return `/api/demo/change-history`
+}
+
+/**
+ * @summary List synthetic change examples from the isolated demo database
+ */
+export const listDemoChangeHistory = async ( options?: Parameters<typeof customFetch>[1]): Promise<DemoChange[]> => {
+
+  return customFetch<DemoChange[]>(getListDemoChangeHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDemoChangeHistoryQueryKey = () => {
+    return [
+    `/api/demo/change-history`
+    ] as const;
+    }
+
+
+export const getListDemoChangeHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listDemoChangeHistory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDemoChangeHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDemoChangeHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDemoChangeHistory>>> = ({ signal }) => listDemoChangeHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDemoChangeHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDemoChangeHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof listDemoChangeHistory>>>
+export type ListDemoChangeHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List synthetic change examples from the isolated demo database
+ */
+
+export function useListDemoChangeHistory<TData = Awaited<ReturnType<typeof listDemoChangeHistory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDemoChangeHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDemoChangeHistoryQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

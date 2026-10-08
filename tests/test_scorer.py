@@ -29,3 +29,12 @@ def test_95_point_threshold_is_verified():
     score, status, _ = calculate_confidence(signals)
     assert score == 95
     assert status == "VERIFIED"
+
+
+def test_malformed_critical_evidence_cannot_keep_a_95_plus_score():
+    signals = {key: True for _, key, _ in __import__("crawler.scorer", fromlist=["SCORE_RULES"]).SCORE_RULES}
+    signals["critical_evidence_valid"] = False
+    score, status, breakdown = calculate_confidence(signals)
+    assert score == 85
+    assert status == "REVIEW_REQUIRED"
+    assert sum(item["earned"] for item in breakdown) == score

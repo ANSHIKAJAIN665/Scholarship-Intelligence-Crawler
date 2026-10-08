@@ -16,6 +16,13 @@ SCORE_RULES = [
 
 
 def calculate_confidence(signals: dict[str, Any]) -> tuple[int, str, list[dict[str, Any]]]:
+    signals = dict(signals)
+    if signals.get("critical_evidence_valid") is False:
+        signals["schema_consistent"] = False
+        signals["current_information_verified"] = False
+    if signals.get("specific_opportunity") is False:
+        signals["scholarship_found_on_official_page"] = False
+        signals["schema_consistent"] = False
     breakdown = []
     total = 0
     for label, key, points in SCORE_RULES:
@@ -28,7 +35,7 @@ def calculate_confidence(signals: dict[str, Any]) -> tuple[int, str, list[dict[s
             "eligibility_supported": "No source excerpt supporting eligibility was captured.",
             "deadline_supported": "No source excerpt supporting the closing date was captured.",
             "current_information_verified": "The official page could not be checked successfully.",
-            "schema_consistent": "The extracted record did not pass schema validation.",
+            "schema_consistent": "The record contains malformed or unsupported critical source evidence.",
             "no_conflicting_official_information": "Conflicting official details were detected.",
         }[key]
         breakdown.append({"label": label, "points": points, "earned": earned, "reason": reason})

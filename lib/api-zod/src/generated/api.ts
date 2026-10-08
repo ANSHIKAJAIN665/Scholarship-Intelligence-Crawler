@@ -176,6 +176,23 @@ export const GetDashboardSummaryResponse = zod.object({
 
 
 /**
+ * @summary List synthetic change examples from the isolated demo database
+ */
+export const ListDemoChangeHistoryResponseItem = zod.object({
+  "id": zod.string(),
+  "scholarshipName": zod.string(),
+  "fieldChanged": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "dateDetected": zod.string(),
+  "sourceUrl": zod.string().url(),
+  "evidence": zod.string(),
+  "isDemo": zod.literal(true)
+})
+export const ListDemoChangeHistoryResponse = zod.array(ListDemoChangeHistoryResponseItem)
+
+
+/**
  * @summary List recent crawler runs
  */
 export const listCrawlRunsQueryLimitDefault = 20;

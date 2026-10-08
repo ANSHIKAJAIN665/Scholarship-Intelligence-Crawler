@@ -69,6 +69,18 @@ export interface Change {
   isDemo?: boolean;
 }
 
+export interface DemoChange {
+  id: string;
+  scholarshipName: string;
+  fieldChanged: string;
+  oldValue: string;
+  newValue: string;
+  dateDetected: string;
+  sourceUrl: string;
+  evidence: string;
+  isDemo: true;
+}
+
 export interface ScoreItem {
   label: string;
   points: number;

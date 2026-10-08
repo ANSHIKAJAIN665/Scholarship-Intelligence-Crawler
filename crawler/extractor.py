@@ -9,17 +9,20 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from crawler.source_classifier import classify_source
+from crawler.source_classifier import classify_source, normalized_identity
 from crawler.status_detector import NOT_SPECIFIED, detect_status
 from models.scholarship import ScholarshipData
 
-SCHOLARSHIP_TERMS = ("scholarship", "fellowship", "stipend")
+SCHOLARSHIP_TERMS = ("scholarship", "fellowship", "stipend", "grant")
 GENERIC_OPPORTUNITY_TITLES = {
     "all scholarships",
+    "all scholarship",
     "fellowship opportunities",
     "national scholarship portal",
     "nsp national scholarship portal",
     "scholarship and fellowship information",
+    "scholarship and grants",
+    "scholarship and grants",
     "scholarship application",
     "scholarship eligibility",
     "scholarship list",
@@ -28,9 +31,15 @@ GENERIC_OPPORTUNITY_TITLES = {
     "scholarship scheme",
     "scholarships and grants",
     "student scholarships",
+    "student scholarship",
 }
 FIELD_PATTERNS: dict[str, tuple[str, ...]] = {
-    "amount": (r"₹\s?[\d,.]+(?:\s?(?:lakh|lakhs|crore|per year|monthly|annually))?", r"rs\.?\s?[\d,.]+", r"inr\s?[\d,.]+", r"\b\d+(?:,\d{3})+\s*(?:per annum|per year|monthly)\b"),
+    "amount": (
+        r"₹\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:lakh|lakhs|crore))?",
+        r"\b(?:rs\.?|inr)\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:lakh|lakhs|crore))?",
+        r"\b\d+(?:,\d{3})+\s*(?:per annum|per year|monthly)\b",
+        r"\b\d+(?:\.\d+)?\s*%",
+    ),
     "benefit": (r"\b(?:scholarship amount|maintenance allowance|stipend|tuition fee|fee reimbursement|financial assistance|financial support|award of)\b",),
     "eligibility": (r"\b(?:eligibility|eligible|applicants? must|students? who|student should|students belonging|candidate must)\b",),
     "academic_requirements": (r"\b(?:minimum marks?|percentage|cgpa|grade point|passed in|qualifying examination|merit list|academic year)\b",),
@@ -48,6 +57,15 @@ FIELD_PATTERNS: dict[str, tuple[str, ...]] = {
     "selection_process": (r"\b(?:selection process|selection criteria|selection will|shortlisted|merit-based|merit list|interview)\b",),
     "renewal_requirements": (r"\b(?:renewal|renewal application|renewed|continuation of scholarship|next academic year)\b",),
 }
+CRITICAL_FIELDS = {"amount", "benefit", "eligibility", "opening_date", "closing_date"}
+EXPLICIT_DATE_PATTERN = re.compile(
+    r"\b(?:"
+    r"\d{1,2}[-/.]\d{1,2}[-/.]\d{4}|"
+    r"\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{4}|"
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -68,27 +86,118 @@ def _clean(value: str) -> str:
 
 def is_specific_scholarship_title(value: str) -> bool:
     """Reject portal/navigation headings that mention awards but name no opportunity."""
-    normalized = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+    normalized = normalized_identity(value)
     if not normalized or normalized in GENERIC_OPPORTUNITY_TITLES:
         return False
     if "faculty fellowship" in normalized:
         return False
     if re.fullmatch(
-        r"(?:all )?(?:scholarships?|fellowships?|stipends?)(?: (?:scheme|program|programme|portal|list|details|eligibility|application|opportunities))?",
+        r"(?:all )?(?:scholarships?|fellowships?|stipends?|grants?)(?: (?:scheme|program|programme|portal|list|details|eligibility|application|opportunities))?",
         normalized,
     ):
         return False
-    return any(term in normalized for term in SCHOLARSHIP_TERMS)
+    if not any(term in normalized for term in SCHOLARSHIP_TERMS):
+        return False
+    descriptive_tokens = set(normalized.split()) - {
+        "all", "and", "application", "details", "eligibility", "fellowship", "list",
+        "grant", "grants", "opportunities", "portal", "scheme", "scholarship", "stipend",
+    }
+    return bool(descriptive_tokens)
 
 
 def sentences(text: str) -> list[str]:
     return [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", text) if part.strip()]
 
 
-def _matching_sentence(text: str, patterns: tuple[str, ...]) -> str:
+def _is_heading_or_label(value: str) -> bool:
+    without_numbers = re.sub(r"^\s*\d+(?:\.\d+)*\s*|\s+\d+\s*$", " ", value)
+    normalized = normalized_identity(without_numbers)
+    labels = {
+        "amount", "amount of scholarship", "benefit", "closing date", "course duration",
+        "deadline", "documents required", "eligible beneficiaries", "eligibility",
+        "eligibility and course duration", "eligibility criteria", "eligibility for scholarship",
+        "general conditions of eligibility", "opening date", "scholarship amount",
+        "scholarship eligibility",
+    }
+    if normalized in labels:
+        return True
+    words = normalized.split()
+    heading_words = {
+        "amount", "benefit", "closing", "course", "date", "deadline", "duration",
+        "eligible", "eligibility", "for", "of", "opening", "scholarship",
+    }
+    return len(words) <= 3 and bool(words) and set(words) <= heading_words
+
+
+def _has_benefit_context(value: str, evidence_text: str = "") -> bool:
+    context = f"{value} {evidence_text}".casefold()
+    return bool(
+        re.search(
+            r"\b(?:scholarship|fellowship|stipend|maintenance|financial support|financial assistance|"
+            r"award|grant|loan|tuition|fee|per month|per annum|per year|disburs(?:ed|ement)?|"
+            r"book allowance|hostel allowance|amount)\b",
+            context,
+        )
+    )
+
+
+def is_valid_field_value(field_name: str, value: str, evidence_text: str = "") -> bool:
+    """Reject labels, incomplete values, and facts whose source excerpt does not support the field."""
+    value = _clean(value)
+    if not value or normalized_identity(value) in {
+        "not specified", "not stated", "unknown", "amount", "eligibility", "deadline",
+    }:
+        return False
+    if field_name in ("opening_date", "closing_date"):
+        return bool(EXPLICIT_DATE_PATTERN.search(value) or EXPLICIT_DATE_PATTERN.search(evidence_text))
+    if field_name == "amount":
+        has_amount = any(re.search(pattern, value, re.IGNORECASE) for pattern in FIELD_PATTERNS["amount"])
+        if not has_amount or not _has_benefit_context(value, evidence_text):
+            return False
+        context = f"{value} {evidence_text}".casefold()
+        if re.search(
+            r"\b(?:application|processing|registration)\s+fee\b|charges?\s+for\s+the\s+"
+            r"(?:application|activity|candidate)|cost\s+of\s+(?:the\s+)?(?:application|registration)|"
+            r"payable\s+by\s+(?:the\s+)?(?:student|candidate)|inclusive\s+of\s+all\s+applicable\s+taxes",
+            context,
+        ):
+            return False
+        return True
+    if field_name == "eligibility":
+        if _is_heading_or_label(value) or len(value.split()) < 4:
+            return False
+        return bool(
+            re.search(
+                r"\b(?:must|should|required|provided|minimum|maximum|at least|not exceed|below|above|"
+                r"less than|more than|between|passed|enrolled|admitted|belong(?:s|ing)? to|income|"
+                r"open to|based on|qualif(?:y|ies)|age|marks|class|standard|only|merit-based|"
+                r"women|graduates?|school-going|college students|postdoctoral|overseas studies)\b",
+                value,
+                re.IGNORECASE,
+            )
+        )
+    if field_name == "benefit":
+        if _is_heading_or_label(value) or len(value.split()) < 3:
+            return False
+        return _has_benefit_context(value, evidence_text)
+    return True
+
+
+def _matching_sentence(
+    text: str,
+    patterns: tuple[str, ...],
+    field_name: str | None = None,
+) -> str:
     for sentence in sentences(text):
-        if any(re.search(pattern, sentence, re.IGNORECASE) for pattern in patterns):
-            return _clean(sentence)[:900]
+        if not any(re.search(pattern, sentence, re.IGNORECASE) for pattern in patterns):
+            continue
+        if field_name in CRITICAL_FIELDS and not is_valid_field_value(
+            field_name, _evidence_value(sentence, field_name), sentence
+        ):
+            continue
+        if field_name is None and _is_heading_or_label(sentence):
+            continue
+        return _clean(sentence)[:900]
     return ""
 
 
@@ -97,8 +206,35 @@ def _evidence_value(text: str, field_name: str) -> str:
         return _clean(text)
     if field_name == "amount":
         matches = [m.group(0) for p in FIELD_PATTERNS[field_name] for m in re.finditer(p, text, re.IGNORECASE)]
-        return "; ".join(dict.fromkeys(matches))[:300] if matches else _clean(text)[:900]
+        return "; ".join(dict.fromkeys(matches))[:300]
     return _clean(text)[:900]
+
+
+def _has_malformed_critical_evidence(field_name: str, text: str) -> bool:
+    for sentence in sentences(text):
+        if field_name == "amount":
+            has_currency_marker = bool(re.search(r"(?:₹|\b(?:rs\.?|inr)\b)", sentence, re.IGNORECASE))
+            has_amount_context = _has_benefit_context(sentence)
+            if has_currency_marker and has_amount_context and not is_valid_field_value(
+                field_name, _evidence_value(sentence, field_name), sentence
+            ):
+                return True
+        elif field_name == "eligibility":
+            if re.search(r"\b(?:eligibility|eligible)\b", sentence, re.IGNORECASE) and not is_valid_field_value(
+                field_name, sentence, sentence
+            ):
+                return True
+        elif field_name == "benefit":
+            if re.search(r"\b(?:benefit|scholarship amount|financial assistance)\b", sentence, re.IGNORECASE) and not is_valid_field_value(
+                field_name, sentence, sentence
+            ):
+                return True
+        elif field_name == "closing_date":
+            if re.search(r"\b(?:deadline|last date|closing date|close(?:s|d)? on|applications? close)\b", sentence, re.IGNORECASE) and not is_valid_field_value(
+                field_name, sentence, sentence
+            ):
+                return True
+    return False
 
 
 def extract_pdf_text(content: bytes) -> str:
@@ -229,15 +365,16 @@ def parse_iitm_scholarships(html: str, page_url: str) -> list[Candidate]:
             evidence = {
                 "scholarship_name": {"value": name, "text": row_text, "url": page_url},
             }
-            if eligibility:
+            if eligibility and is_valid_field_value("eligibility", eligibility, row_text):
                 evidence["eligibility"] = {
                     "value": eligibility,
-                    "text": eligibility,
+                    "text": row_text,
                     "url": page_url,
                 }
-            if amount:
-                evidence["amount"] = {"value": amount, "text": amount, "url": page_url}
-                evidence["benefit"] = {"value": amount, "text": amount, "url": page_url}
+            if amount and is_valid_field_value("amount", amount, row_text):
+                evidence["amount"] = {"value": amount, "text": row_text, "url": page_url}
+                if is_valid_field_value("benefit", amount, row_text):
+                    evidence["benefit"] = {"value": amount, "text": row_text, "url": page_url}
             found.append(
                 Candidate(
                     scholarship_name=name,
@@ -298,6 +435,7 @@ def parse_tata_education_grants(html: str, page_url: str) -> list[Candidate]:
                 r"\b(?:supports only overseas studies|scheme is open|based on students' needs|merit-based)\b",
                 r"\b(?:women graduates|school-going students|college students|masters|postdoctoral)\b",
             ),
+            "eligibility",
         )
         if eligibility:
             evidence["eligibility"] = {
@@ -307,10 +445,11 @@ def parse_tata_education_grants(html: str, page_url: str) -> list[Candidate]:
             }
         amount_sentence = _matching_sentence(
             section_text,
-            (r"\b(?:loan,?\s*a maximum|maximum of)\s*₹", r"₹\s*[\d,.]+\s*(?:lakh|lakhs|crore)?"),
+            (r"\b(?:loan,?\s*a maximum|maximum of)\s*₹", r"₹\s*\d[\d,.]*\s*(?:lakh|lakhs|crore)?"),
+            "amount",
         )
         if amount_sentence:
-            amount_match = re.search(r"₹\s*[\d,.]+\s*(?:lakh|lakhs|crore)?", amount_sentence, re.IGNORECASE)
+            amount_match = re.search(r"₹\s*\d[\d,]*(?:\.\d+)?\s*(?:lakh|lakhs|crore)?", amount_sentence, re.IGNORECASE)
             evidence["amount"] = {
                 "value": f"{amount_match.group(0)} maximum loan" if amount_match else amount_sentence,
                 "text": amount_sentence,
@@ -322,8 +461,8 @@ def parse_tata_education_grants(html: str, page_url: str) -> list[Candidate]:
                 "url": page_url,
             }
         elif "means grant" in title_lower:
-            benefit = _matching_sentence(section_text, (r"\bpartial financial assistance\b",))
-            if benefit:
+            benefit = _matching_sentence(section_text, (r"\bpartial financial assistance\b",), "benefit")
+            if benefit and is_valid_field_value("benefit", benefit, benefit):
                 evidence["benefit"] = {
                     "value": benefit,
                     "text": benefit,
@@ -399,7 +538,11 @@ def extract_page_candidate(
         listing_text=text,
     )
     for field_name, patterns in FIELD_PATTERNS.items():
-        snippet = _matching_sentence(text, patterns)
+        snippet = _matching_sentence(
+            text,
+            patterns,
+            field_name if field_name in CRITICAL_FIELDS else None,
+        )
         if snippet:
             candidate.evidence[field_name] = {
                 "value": _evidence_value(snippet, field_name),
@@ -429,19 +572,37 @@ def extract_record(
     conflicting_information: bool = False,
 ) -> tuple[ScholarshipData, list[dict[str, str]], list[dict[str, Any]]]:
     full_text = "\n".join(text for _, text in source_segments)
-    field_evidence = dict(candidate.evidence)
+    field_evidence: dict[str, dict[str, str]] = {}
+    malformed_fields: set[str] = set()
+    for field_name, item in candidate.evidence.items():
+        if field_name in CRITICAL_FIELDS and not is_valid_field_value(
+            field_name, item.get("value", ""), item.get("text", "")
+        ):
+            if item.get("value") or item.get("text"):
+                malformed_fields.add(field_name)
+            continue
+        field_evidence[field_name] = dict(item)
     for field_name, patterns in FIELD_PATTERNS.items():
         if field_name in field_evidence:
             continue
         for source_url, text in source_segments:
-            snippet = _matching_sentence(text, patterns)
+            snippet = _matching_sentence(
+                text,
+                patterns,
+                field_name if field_name in CRITICAL_FIELDS else None,
+            )
             if snippet:
+                value = _evidence_value(snippet, field_name)
                 field_evidence[field_name] = {
-                    "value": _evidence_value(snippet, field_name),
+                    "value": value,
                     "text": snippet,
                     "url": source_url,
                 }
                 break
+        if field_name in CRITICAL_FIELDS and field_name not in field_evidence:
+            if any(_has_malformed_critical_evidence(field_name, text) for _, text in source_segments):
+                malformed_fields.add(field_name)
+    malformed_fields.difference_update(field_evidence)
     if candidate.application_url != NOT_SPECIFIED:
         field_evidence.setdefault(
             "application_url",
@@ -481,7 +642,14 @@ def extract_record(
         "renewal_requirements",
     ):
         item = field_evidence.get(field_name)
-        values[field_name] = item["value"] if item else NOT_SPECIFIED
+        values[field_name] = (
+            item["value"]
+            if item and (
+                field_name not in CRITICAL_FIELDS
+                or is_valid_field_value(field_name, item.get("value", ""), item.get("text", ""))
+            )
+            else NOT_SPECIFIED
+        )
     explicit_status = field_evidence.get("current_status", {}).get("value")
     values["current_status"] = detect_status(
         values["closing_date"],
@@ -507,6 +675,12 @@ def extract_record(
         current_page_checked=current_page_checked,
         conflicting_information=conflicting_information,
     )
+    has_core_evidence = any(
+        field_evidence.get(field_name)
+        for field_name in ("eligibility", "benefit", "amount")
+    )
+    verification["critical_evidence_valid"] = not malformed_fields and has_core_evidence
+    verification["specific_opportunity"] = is_specific_scholarship_title(candidate.scholarship_name)
     score, verification_status, breakdown = calculate_confidence(
         {**verification, "schema_consistent": True}
     )

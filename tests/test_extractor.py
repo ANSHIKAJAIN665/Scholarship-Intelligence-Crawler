@@ -1,6 +1,8 @@
 from crawler.extractor import (
+    Candidate,
     extract_page_candidate,
     extract_record,
+    is_specific_scholarship_title,
     parse_iitm_scholarships,
     parse_tata_education_grants,
 )
@@ -67,3 +69,71 @@ def test_foundation_page_states_active_and_closed_programmes_explicitly():
     assert by_name["Tata Trusts Means Grant Programme"].evidence["current_status"]["value"] == "ACTIVE"
     assert by_name["Medical and Healthcare Scholarship"].evidence["current_status"]["value"] == "EXPIRED"
     assert by_name["Tata Trusts Means Grant Programme"].application_url == "Not specified"
+
+
+def test_navigation_and_portal_titles_are_not_opportunity_candidates():
+    assert not is_specific_scholarship_title("NSP : National Scholarship Portal")
+    assert not is_specific_scholarship_title("Scholarship Eligibility")
+    assert not is_specific_scholarship_title("All Scholarships")
+    assert is_specific_scholarship_title("National Merit Scholarship for Rural Students")
+
+
+def test_malformed_amount_eligibility_and_deadline_are_not_stored_or_verified():
+    url = "https://sample.gov.in/merit-scholarship"
+    candidate = Candidate(
+        scholarship_name="National Merit Scholarship for Rural Students",
+        source_url=url,
+        provider="Sample Government Department",
+        listing_text="National Merit Scholarship for Rural Students",
+        evidence={
+            "scholarship_name": {
+                "value": "National Merit Scholarship for Rural Students",
+                "text": "National Merit Scholarship for Rural Students",
+                "url": url,
+            },
+            "amount": {"value": "Rs.", "text": "Scholarship amount: Rs.", "url": url},
+            "eligibility": {
+                "value": "2.1 Eligibility and course duration 17",
+                "text": "2.1 Eligibility and course duration 17",
+                "url": url,
+            },
+            "closing_date": {
+                "value": "October 2026",
+                "text": "Applications close in October 2026.",
+                "url": url,
+            },
+        },
+    )
+    record, evidence, breakdown = extract_record(
+        candidate,
+        [(url, candidate.listing_text)],
+        current_page_checked=True,
+    )
+    assert record.amount == "Not specified"
+    assert record.eligibility == "Not specified"
+    assert record.closing_date == "Not specified"
+    assert not {"amount", "eligibility", "closing_date"} & {
+        item["field_name"] for item in evidence
+    }
+    assert record.confidence_score < 95
+    assert record.verification_status == "REVIEW_REQUIRED"
+    assert sum(item["earned"] for item in breakdown) == record.confidence_score
+
+
+def test_amount_pattern_requires_a_numeric_source_value():
+    html = """
+    <h1>National Merit Scholarship for Rural Students</h1>
+    <p>Scholarship amount: Rs.</p>
+    <p>Eligible students must have passed Class 12.</p>
+    <p>Applications close on 31 October 2026.</p>
+    """
+    candidate = extract_page_candidate(html, "https://sample.gov.in/merit")
+    assert candidate is not None
+    record, evidence, _ = extract_record(
+        candidate,
+        [(candidate.source_url, candidate.listing_text)],
+        current_page_checked=True,
+    )
+    assert record.amount == "Not specified"
+    assert not any(item["field_name"] == "amount" for item in evidence)
+    assert record.verification_status == "REVIEW_REQUIRED"

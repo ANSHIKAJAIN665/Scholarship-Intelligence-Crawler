@@ -15,10 +15,11 @@ import {
   useGetScholarship,
   useHealthCheck,
   useListCrawlRuns,
+  useListDemoChangeHistory,
   useListScholarships,
   useRunCrawler,
 } from '@workspace/api-client-react';
-import type { CrawlRun, DashboardSummary, Scholarship, ScholarshipDetail } from '@workspace/api-client-react';
+import type { CrawlRun, DashboardSummary, DemoChange, Scholarship, ScholarshipDetail } from '@workspace/api-client-react';
 import NotFound from '@/pages/not-found';
 import { ErrorBoundary } from '@/components/error-boundary';
 
@@ -164,8 +165,10 @@ function Stat({ label, value, note, icon: Icon, accent }: { label: string; value
 function Dashboard() {
   const summaryQuery = useGetDashboardSummary();
   const runsQuery = useListCrawlRuns({ limit: 5 });
+  const demoChangesQuery = useListDemoChangeHistory();
   const summary = summaryQuery.data as DashboardSummary | undefined;
   const runList = (runsQuery.data || []) as CrawlRun[];
+  const demoChanges = (demoChangesQuery.data || []) as DemoChange[];
   return <div className="page">
     <PageHeading eyebrow="INTELLIGENCE OVERVIEW" title="A clearer view of opportunity." description="Verified scholarship information, grounded in official sources and continuously monitored." actions={<RunButton />} />
     {summaryQuery.isLoading ? <div className="stat-grid"><div className="stat-card stat-skeleton" /><div className="stat-card stat-skeleton" /><div className="stat-card stat-skeleton" /><div className="stat-card stat-skeleton" /></div>
@@ -191,6 +194,21 @@ function Dashboard() {
         <div className="signal-foot"><span><ShieldCheck size={15} /> Official-source evidence</span><span className="signal-index">01 / 03</span></div>
       </aside>
     </div>
+    <section className="panel demo-change-panel" data-testid="demo-change-examples">
+      <div className="panel-head">
+        <div><div className="eyebrow">DEMO DATA · NOT REAL OPPORTUNITIES</div><h2>Example change history</h2></div>
+        <span className="demo-badge">DEMO DATA</span>
+      </div>
+      <p className="demo-change-intro">Controlled deadline and award-amount changes are stored in a separate demo database. They do not alter or count toward live scholarship records.</p>
+      {demoChangesQuery.isLoading ? <SkeletonRows count={2} /> : demoChangesQuery.isError ? <ErrorState retry={() => demoChangesQuery.refetch()} label="Demo change examples are unavailable." /> :
+        demoChanges.length ? <div className="demo-change-grid">{demoChanges.map((change) => <article className="demo-change-card" key={change.id} data-testid={`demo-change-${change.fieldChanged}`}>
+          <div className="demo-change-meta"><span>{friendly(change.fieldChanged)}</span><time>{date(change.dateDetected, true)}</time></div>
+          <h3>{change.scholarshipName}</h3>
+          <div className="demo-change-values"><span>{change.oldValue}</span><ArrowUpRight size={14} /><b>{change.newValue}</b></div>
+          <p>{change.evidence}</p>
+          <a href={change.sourceUrl} target="_blank" rel="noreferrer" className="inline-source">{sourceHost(change.sourceUrl)} <ArrowUpRightFromSquare size={12} /></a>
+        </article>)}</div> : <EmptyState title="No demo examples yet" detail="Run the isolated change simulator to generate labeled deadline and amount examples." />}
+    </section>
     <section className="panel latest-panel">
       <div className="panel-head"><div><div className="eyebrow">LATEST DISCOVERIES</div><h2>Recently indexed opportunities</h2></div><Link className="text-link" href="/scholarships" data-testid="link-browse-scholarships">Browse scholarships <ArrowUpRight size={15} /></Link></div>
       <ScholarshipTable compact />

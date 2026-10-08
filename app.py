@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, select
+from sqlalchemy.orm import Session
 
 from crawler.crawler import create_crawl_run, execute_crawl_run
 from database.database import SessionLocal, init_db
@@ -14,12 +16,15 @@ from database.models import ChangeHistory, CrawlRun, Scholarship, SourceEvidence
 from models.scholarship import (
     ChangeResponse,
     CrawlRunResponse,
+    DemoChangeResponse,
     DashboardSummaryResponse,
     EvidenceResponse,
     ScholarshipDetailResponse,
     ScholarshipResponse,
     ScoreItemResponse,
 )
+
+DEMO_DB_PATH = Path(__file__).resolve().parent / "data" / "demo-changes.db"
 
 
 @asynccontextmanager
@@ -40,9 +45,47 @@ def _run_response(run: CrawlRun) -> CrawlRunResponse:
     return CrawlRunResponse.model_validate(run)
 
 
+def _read_demo_changes(database_path: Path = DEMO_DB_PATH) -> list[DemoChangeResponse]:
+    if not database_path.exists():
+        return []
+    demo_engine = create_engine(
+        f"sqlite:///{database_path.resolve().as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
+    try:
+        with Session(demo_engine) as session:
+            changes = session.scalars(
+                select(ChangeHistory)
+                .where(ChangeHistory.is_demo.is_(True))
+                .order_by(ChangeHistory.date_detected.desc())
+            ).all()
+            return [
+                DemoChangeResponse(
+                    id=item.id,
+                    scholarship_name=item.scholarship.scholarship_name,
+                    field_changed=item.field_changed,
+                    old_value=item.old_value,
+                    new_value=item.new_value,
+                    date_detected=item.date_detected,
+                    source_url=item.source_url,
+                    evidence=item.evidence,
+                    is_demo=True,
+                )
+                for item in changes
+            ]
+    finally:
+        demo_engine.dispose()
+
+
 @app.get("/healthz")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/demo/change-history", response_model=list[DemoChangeResponse])
+def list_demo_change_history() -> list[DemoChangeResponse]:
+    """Return clearly labeled synthetic examples from the isolated demo database."""
+    return _read_demo_changes()
 
 
 @app.get("/scholarships", response_model=list[ScholarshipResponse])

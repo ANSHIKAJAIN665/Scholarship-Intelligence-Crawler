@@ -82,6 +82,18 @@ class ChangeResponse(ApiModel):
     is_demo: bool = False
 
 
+class DemoChangeResponse(ApiModel):
+    id: str
+    scholarship_name: str
+    field_changed: str
+    old_value: str
+    new_value: str
+    date_detected: str
+    source_url: str
+    evidence: str
+    is_demo: bool = True
+
+
 class ScoreItemResponse(ApiModel):
     label: str
     points: int

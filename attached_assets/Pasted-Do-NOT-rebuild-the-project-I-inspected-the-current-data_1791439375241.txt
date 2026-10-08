@@ -1,0 +1,200 @@
+Do NOT rebuild the project.
+
+I inspected the current database and found serious data-quality issues that must be fixed before submission.
+
+Current database:
+- 145 records
+- only about 90 unique scholarship names
+- many duplicate scholarship names
+- several navigation/help/portal pages are incorrectly stored as scholarships
+- at least one non-scholarship record ("NSP : National Scholarship Portal") is marked VERIFIED with 100 confidence
+- some 100-confidence records contain incomplete extraction such as "Amount: Rs."
+- live change_history currently has 0 records
+- demo change database has only one simulated change
+
+Fix the existing implementation.
+
+TASK 1 — REMOVE NON-SCHOLARSHIP RECORDS
+
+Strengthen scholarship candidate validation.
+
+Never create scholarship records for:
+
+- National Scholarship Portal itself
+- Home
+- About
+- FAQ
+- Helpdesk
+- Login
+- Application Status
+- OTR
+- Officers
+- Institutes
+- Institute search
+- Sitemap
+- Privacy Policy
+- Copyright Policy
+- Terms
+- Disclaimer
+- Contact
+- Fellowship login pages
+- Generic portal pages
+
+A candidate must represent an actual named scholarship/fellowship/stipend/education grant opportunity.
+
+Do not rely only on the presence of words like "scholarship" or "fellowship".
+
+Require evidence such as:
+- named scholarship opportunity
+- eligibility or benefit information
+- official scholarship/program context
+
+TASK 2 — DEDUPLICATION
+
+Deduplicate scholarships by normalized scholarship identity.
+
+Do NOT treat the same scholarship as different merely because it was discovered through different URLs.
+
+For example, if the same scholarship appears on:
+- listing page
+- guideline PDF
+- detail page
+
+it must remain ONE scholarship record.
+
+Use a robust normalized identity based on:
+provider + normalized scholarship name
+
+and handle minor spelling/punctuation differences.
+
+Do not delete useful source evidence; attach multiple evidence sources to the same scholarship.
+
+TASK 3 — FIX EXTRACTION QUALITY
+
+Do not allow incomplete values such as:
+
+"Rs."
+"₹"
+"amount:"
+"eligibility:"
+"deadline:"
+
+to be stored as actual extracted values.
+
+If a meaningful value cannot be extracted:
+
+store:
+"Not specified"
+
+The evidence must actually support the extracted value.
+
+For example, if amount evidence only says "Rs.", do not claim an amount was extracted.
+
+TASK 4 — CONFIDENCE SCORE
+
+Keep the existing deterministic scoring methodology.
+
+BUT:
+
+A record must NOT receive 95+ confidence if critical evidence is malformed or incomplete.
+
+For example:
+- malformed amount evidence
+- empty eligibility evidence
+- generic page title
+- generic portal page
+- unsupported deadline
+
+must prevent VERIFIED status.
+
+Do not artificially reduce scores just to change the numbers; make the verification criteria genuinely evidence-based.
+
+TASK 5 — VERIFIED RECORDS
+
+After cleaning the database, produce at least:
+
+20 real unique scholarships
+15+ verified against official primary sources
+10+ confidence >=95
+3+ source types overall
+
+Do NOT fabricate records.
+
+Government, university and foundation/provider sources should remain supported.
+
+TASK 6 — CHANGE DETECTION
+
+Create TWO clear demonstration cases.
+
+Example 1:
+deadline:
+31 August 2026
+→
+15 September 2026
+
+Example 2:
+scholarship amount:
+old value
+→
+new value
+
+For both, retain:
+- old value
+- new value
+- date detected
+- source
+- evidence
+
+Clearly label synthetic demonstrations as DEMO DATA.
+
+TASK 7 — STALE / EXPIRED
+
+Ensure there are at least two legitimate examples that demonstrate:
+- EXPIRED
+or
+- NO_LONGER_VERIFIABLE
+
+Do not fabricate real-world claims.
+
+Use controlled demo data if necessary, clearly labelled DEMO DATA.
+
+TASK 8 — DATABASE CLEANUP
+
+Do not simply add more records.
+
+Clean the existing database and make sure the final database contains unique, valid scholarship opportunities.
+
+After cleanup report:
+
+Total unique scholarships:
+Verified:
+Review required:
+Confidence >=95:
+Government:
+University:
+Foundation/provider:
+Active:
+Expiring soon:
+Expired:
+No longer verifiable:
+Change history records:
+
+TASK 9 — TESTING
+
+Add tests for:
+- non-scholarship page rejection
+- duplicate scholarship detection
+- malformed extraction rejection
+- confidence threshold
+- change detection
+- stale detection
+
+Run:
+
+python3 -m pytest
+
+Fix all failures.
+
+Finally run the application and verify the dashboard displays the cleaned database.
+
+Do not stop after changing code. Actually execute the cleanup and tests.

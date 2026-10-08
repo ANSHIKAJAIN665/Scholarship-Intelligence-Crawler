@@ -378,6 +378,18 @@ a { color: inherit; text-decoration: none; }
 .signal-index { font: 9px var(--app-font-mono); color: #90968a; }
 .latest-panel { padding: 20px 21px 5px; }
 .latest-panel .panel-head { margin-bottom: 16px; }
+.demo-change-panel { padding: 20px 21px; margin-bottom: 14px; }
+.demo-change-intro { margin: 12px 0 0; color: #78837c; font-size: 11px; line-height: 1.6; }
+.demo-change-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.demo-change-card { min-width: 0; padding: 14px; border: 1px solid #e8e3d7; border-radius: 5px; background: #f7f5ef; }
+.demo-change-meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: #8c774b; font: 9px var(--app-font-mono); text-transform: uppercase; }
+.demo-change-meta time { color: #8d9690; text-transform: none; text-align: right; }
+.demo-change-card h3 { margin: 12px 0 10px; color: #354b4d; font: 600 13px/1.4 var(--app-font-serif); }
+.demo-change-values { display: flex; align-items: center; gap: 8px; color: #62736c; font-size: 11px; overflow-wrap: anywhere; }
+.demo-change-values svg { flex: 0 0 auto; color: #a98649; }
+.demo-change-values b { color: #3c624f; font-weight: 700; }
+.demo-change-card > p { margin: 11px 0; color: #7d8981; font-size: 10px; line-height: 1.55; }
+.demo-change-card .inline-source { color: #547764; }
 .table-wrap { width: 100%; overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; text-align: left; min-width: 760px; }
 th { border-bottom: 1px solid #e8e5dc; color: #929992; font: 500 9px var(--app-font-mono); letter-spacing: .09em; padding: 10px 10px; white-space: nowrap; }
@@ -579,6 +591,7 @@ tbody tr:hover { background: #f7f5ef; }
   .stat-card strong { font-size: 28px; }
   .dashboard-grid { grid-template-columns: 1fr; }
   .activity-panel { min-height: 0; }
+  .demo-change-grid { grid-template-columns: 1fr; }
   .signal-panel { min-height: 235px; }
   .filter-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .detail-hero { padding: 22px 19px; align-items: flex-start; }

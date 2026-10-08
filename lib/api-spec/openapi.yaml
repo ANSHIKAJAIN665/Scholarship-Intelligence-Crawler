@@ -11,6 +11,7 @@ tags:
   - name: scholarships
   - name: crawler
   - name: dashboard
+  - name: demo
 paths:
   /healthz:
     get:
@@ -79,6 +80,19 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DashboardSummary" }
+  /demo/change-history:
+    get:
+      operationId: listDemoChangeHistory
+      tags: [demo]
+      summary: List synthetic change examples from the isolated demo database
+      responses:
+        "200":
+          description: Clearly labeled synthetic change history examples
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DemoChange" }
   /crawl-runs:
     get:
       operationId: listCrawlRuns
@@ -206,6 +220,19 @@ components:
         sourceUrl: { type: string, format: uri }
         evidence: { type: string }
         isDemo: { type: boolean }
+    DemoChange:
+      type: object
+      required: [id, scholarshipName, fieldChanged, oldValue, newValue, dateDetected, sourceUrl, evidence, isDemo]
+      properties:
+        id: { type: string }
+        scholarshipName: { type: string }
+        fieldChanged: { type: string }
+        oldValue: { type: string }
+        newValue: { type: string }
+        dateDetected: { type: string }
+        sourceUrl: { type: string, format: uri }
+        evidence: { type: string }
+        isDemo: { type: boolean, enum: [true] }
     ScoreItem:
       type: object
       required: [label, points, earned, reason]
